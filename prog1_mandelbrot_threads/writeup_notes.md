@@ -165,3 +165,44 @@ cores, so 8x is the ceiling; ~90% / ~83% parallel efficiency). Meets the
 "about 7-8x on both views" target.
 
 ---
+
+## Step 5 — 16 threads vs 8 threads (SMT / Hyper-Threading)
+
+The machine has 8 physical cores with 2-way SMT (AMD's name for what Intel
+markets as Hyper-Threading) = 16 hardware threads. SMT runs two threads on
+one physical core, sharing that core's execution units to fill idle slots
+("bubbles").
+
+Interleaved decomposition, min of 5 runs, repeated 3x:
+
+| Run | VIEW1 8thr | VIEW1 16thr | VIEW2 8thr | VIEW2 16thr |
+|----:|-----------:|------------:|-----------:|------------:|
+| 1   | 7.57x      | 9.80x       | 7.17x      | 7.80x       |
+| 2   | 7.42x      | 9.16x       | 6.61x      | 8.32x       |
+| 3   | 7.46x      | 9.45x       | 7.32x      | 8.14x       |
+
+**Is 16 noticeably faster than 8? No, only modestly (~+20-30%).**
+
+Doubling the thread count (8 -> 16) yields only ~1.2-1.3x more speedup, not
+2x. Reason: threads 9-16 do not get new physical cores; they pair up with
+threads 1-8 on the same 8 cores via SMT. Mandelbrot is compute-bound (a
+tight floating-point iteration that keeps the FP units busy), so there are
+few idle execution-unit slots for the second SMT thread to use. The small
+gain that does appear comes from filling the bubbles that remain (branch
+mispredicts on the escape test, FP dependency latency).
+
+Evidence from per-thread times at 16 threads: each thread computes 75 rows
+(half of the 8-thread case's 150) yet takes ~47-83 ms per thread -- as long
+or longer than the 8-thread workers took for twice the rows -- because two
+threads now share one core's execution units at ~55-60% of full-core speed.
+
+### Summary of Program 1
+
+- Load imbalance, not core count, was the limiter for contiguous blocks.
+- Interleaving rows across threads balances the heavy central body evenly
+  with a single, sync-free, thread-count-agnostic policy.
+- Speedup scales near-linearly up to the 8 physical cores (7.2x/6.6x at 8
+  threads); beyond that, SMT adds only ~20-30% because the workload is
+  compute-bound.
+
+---
