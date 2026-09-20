@@ -249,7 +249,51 @@ void clampedExpVector(float* values, int* exponents, float* output, int N) {
   // Your solution should work for any value of
   // N and VECTOR_WIDTH, not just when VECTOR_WIDTH divides N
   //
-  
+
+  __cs149_vec_float x;          // bases for this batch
+  __cs149_vec_int   count;      // remaining multiplications per lane
+  __cs149_vec_float result;     // running product per lane
+  __cs149_mask maskAll, maskActive, maskClamp;
+
+  __cs149_vec_int   zero   = _cs149_vset_int(0);
+  __cs149_vec_int   one    = _cs149_vset_int(1);
+  __cs149_vec_float clampV = _cs149_vset_float(9.999999f);
+  __cs149_mask      maskFull = _cs149_init_ones();  // all VECTOR_WIDTH lanes
+
+  for (int i = 0; i < N; i += VECTOR_WIDTH) {
+
+    // Tail handling: only the first `width` lanes map to valid elements when
+    // (N - i) < VECTOR_WIDTH, so the extra lanes are never loaded or stored.
+    int width = (N - i) < VECTOR_WIDTH ? (N - i) : VECTOR_WIDTH;
+    maskAll = _cs149_init_ones(width);
+
+    // count starts at 0 in EVERY lane so unused tail lanes are already "done";
+    // valid lanes then receive their real exponent.
+    count = _cs149_vset_int(0);
+    _cs149_vload_int(count, exponents + i, maskAll);   // count = exponents[i]
+    _cs149_vload_float(x, values + i, maskAll);         // x     = values[i]
+
+    // result = 1.0 in every lane. Multiplying by x `count` times yields
+    // x^count, and count == 0 leaves result at 1.0 (the serial y==0 case).
+    result = _cs149_vset_float(1.f);
+
+    // Keep multiplying while ANY lane still has count > 0. Lanes whose count
+    // has hit 0 are masked out, so their result freezes at the correct x^y.
+    while (true) {
+      _cs149_vgt_int(maskActive, count, zero, maskFull);  // lanes with count > 0
+      if (_cs149_cntbits(maskActive) == 0)
+        break;
+      _cs149_vmult_float(result, result, x, maskActive);  // result *= x
+      _cs149_vsub_int(count, count, one, maskActive);     // count  -= 1
+    }
+
+    // Clamp: lanes whose result exceeds 9.999999 are set to 9.999999.
+    _cs149_vgt_float(maskClamp, result, clampV, maskAll);
+    _cs149_vset_float(result, 9.999999f, maskClamp);
+
+    // Write back this batch's valid lanes only.
+    _cs149_vstore_float(output + i, result, maskAll);
+  }
 }
 
 // returns the sum of all elements in values
