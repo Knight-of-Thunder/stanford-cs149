@@ -30,17 +30,14 @@ extern void mandelbrotSerial(
 // Thread entrypoint.
 void workerThreadStart(WorkerArgs * const args) {
 
-    // Spatial decomposition for two threads:
-    //   thread 0 -> top half of the image, thread 1 -> bottom half.
-    int halfHeight = args->height / 2;
-    int startRow, numRows;
-    if (args->threadId == 0) {
-        startRow = 0;
-        numRows  = halfHeight;                    // top half
-    } else {
-        startRow = halfHeight;
-        numRows  = args->height - halfHeight;     // bottom half (keeps odd remainder)
-    }
+    // Spatial decomposition: split the image into `numThreads` contiguous
+    // horizontal blocks of rows; thread i computes block i.
+    int rowsPerThread = args->height / args->numThreads;
+    int startRow = args->threadId * rowsPerThread;
+    // The last thread absorbs any remainder rows (height may not divide evenly).
+    int numRows = (args->threadId == args->numThreads - 1)
+                      ? (args->height - startRow)
+                      : rowsPerThread;
 
     mandelbrotSerial(args->x0, args->y0, args->x1, args->y1,
                      args->width, args->height,
