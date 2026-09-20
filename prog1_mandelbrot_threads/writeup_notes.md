@@ -73,3 +73,63 @@ pixels across rows, so it shows no 3-thread dip and rises monotonically.
 Step 3 will confirm this by timing each thread individually.
 
 ---
+
+## Step 3 — Per-thread timing (confirms the load-imbalance hypothesis)
+
+Added timestamps around the `mandelbrotSerial` call in `workerThreadStart`
+and printed each thread's row-range and elapsed time.
+
+### 3 threads, VIEW 1 (the anomaly)
+
+| Thread | Rows        | Time (ms) |
+|-------:|:------------|----------:|
+| 0      | [0, 400)    | ~68       |
+| 1      | [400, 800)  | **~213**  |
+| 2      | [800, 1200) | ~72       |
+
+The middle thread does ~3x the work of the edge threads. Total wall time
+(211 ms) is set by thread 1 alone. Sum of per-thread times ~354 ms ~=
+serial 352 ms (work isn't added, just unevenly split). Middle block is
+~60% of the work, so speedup is capped near 354/213 ~ 1.66x -> matches the
+measured 1.67x. Confirms: contiguous blocks put the heavy central body
+almost entirely in one thread.
+
+### 2 threads, VIEW 1 (balanced)
+
+| Thread | Rows        | Time (ms) |
+|-------:|:------------|----------:|
+| 0      | [0, 600)    | 177.9     |
+| 1      | [600, 1200) | 180.2     |
+
+Nearly equal -> symmetric split about y=0 balances the load -> ~2x.
+
+### 8 threads, VIEW 1 (severe imbalance)
+
+| Thread | Rows          | Time (ms) |
+|-------:|:--------------|----------:|
+| 7      | [1050, 1200)  | 6.2       |
+| 0      | [0, 150)      | 16.6      |
+| 6      | [900, 1050)   | 31.7      |
+| 1      | [150, 300)    | 42.4      |
+| 5      | [750, 900)    | 63.9      |
+| 2      | [300, 450)    | 69.3      |
+| 3      | [450, 600)    | 93.2      |
+| 4      | [600, 750)    | 96.0      |
+
+Slowest/fastest ~= 15x. Wall time is bounded by the slowest thread (~96 ms,
+the central rows 600-750), so 343/96 ~ 3.6x, close to the measured ~4x.
+Threads owning the vertical-center blocks (3, 4) are heaviest; edge threads
+(0, 7) are nearly idle.
+
+### How this explains the speedup graph
+
+The parallel time is set by the *slowest* thread, not the average. Because
+the heavy interior clusters in the vertical center, contiguous row-blocks
+give one (or few) central threads far more work than the rest. Adding
+threads shrinks each block but the central block stays heavy relative to
+the others, so speedup grows slowly and non-monotonically (the 3-thread
+case is worst because a single middle block captures nearly the entire
+heavy center). Fixing this needs a decomposition that spreads heavy rows
+across all threads -> Step 4 (interleaving).
+
+---
