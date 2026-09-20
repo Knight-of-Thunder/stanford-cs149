@@ -20,3 +20,6 @@ prog6_kmeans/kmeans
 
 # prog6 dataset (large, generated locally)
 prog6_kmeans/data.dat
+
+# Python virtual environment
+.venv/
