@@ -1,5 +1,6 @@
 #include "logger.h"
 #include "CS149intrin.h"
+#include <cstring>
 
 void Logger::addLog(const char * instruction, __cs149_mask mask, int N) {
   Log newLog;
