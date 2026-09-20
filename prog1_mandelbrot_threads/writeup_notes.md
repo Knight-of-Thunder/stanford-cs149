@@ -133,3 +133,35 @@ heavy center). Fixing this needs a decomposition that spreads heavy rows
 across all threads -> Step 4 (interleaving).
 
 ---
+
+## Step 4 — Interleaved (round-robin) decomposition
+
+Approach: thread i computes rows i, i+numThreads, i+2*numThreads, ...
+(each thread loops with stride numThreads, calling mandelbrotSerial one row
+at a time). This scatters the heavy central rows evenly across all threads,
+so every thread gets a near-identical mix of heavy and cheap rows. No
+synchronization is used (threads write disjoint rows), and the same single
+policy works for every thread count. Row indices >= height are simply never
+claimed, so height-not-divisible-by-numThreads is handled for free.
+
+### Speedup: contiguous vs interleaved
+
+| Threads | VIEW1 blocks | VIEW1 interleaved | VIEW2 blocks | VIEW2 interleaved |
+|--------:|-------------:|------------------:|-------------:|------------------:|
+| 2       | 2.23x        | 2.27x             | 2.05x        | 1.91x             |
+| 3       | **1.64x**    | **2.90x**         | 2.34x        | 2.80x             |
+| 4       | 2.36x        | 3.81x             | 2.60x        | 3.69x             |
+| 5       | 2.47x        | 4.71x             | 3.00x        | 4.55x             |
+| 6       | 3.17x        | 5.79x             | 3.36x        | 5.45x             |
+| 7       | 3.39x        | 6.56x             | 3.83x        | 6.18x             |
+| 8       | 4.01x        | **7.20x**         | 4.21x        | **6.64x**         |
+
+Per-thread times are now balanced: e.g. 3 threads VIEW 1 = 122/122/122 ms
+(was 68/213/72). The 3-thread dip is gone and speedup is monotonic and
+near-linear (~0.9x per added thread).
+
+**Final 8-thread speedup: VIEW 1 = 7.20x, VIEW 2 = 6.64x** (8 physical
+cores, so 8x is the ceiling; ~90% / ~83% parallel efficiency). Meets the
+"about 7-8x on both views" target.
+
+---

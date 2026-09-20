@@ -30,24 +30,22 @@ extern void mandelbrotSerial(
 // Thread entrypoint.
 void workerThreadStart(WorkerArgs * const args) {
 
-    // Spatial decomposition: split the image into `numThreads` contiguous
-    // horizontal blocks of rows; thread i computes block i.
-    int rowsPerThread = args->height / args->numThreads;
-    int startRow = args->threadId * rowsPerThread;
-    // The last thread absorbs any remainder rows (height may not divide evenly).
-    int numRows = (args->threadId == args->numThreads - 1)
-                      ? (args->height - startRow)
-                      : rowsPerThread;
-
+    // Interleaved (round-robin) decomposition: thread i computes rows
+    // i, i+numThreads, i+2*numThreads, ...  This scatters the heavy central
+    // rows evenly across all threads, balancing the load. No synchronization
+    // is needed because each thread writes a disjoint set of rows.
+    // (Also handles height not divisible by numThreads: any row index < height
+    //  is simply claimed by whichever thread it maps to.)
     double startTime = CycleTimer::currentSeconds();
-    mandelbrotSerial(args->x0, args->y0, args->x1, args->y1,
-                     args->width, args->height,
-                     startRow, numRows,
-                     args->maxIterations, args->output);
+    for (int row = args->threadId; row < (int)args->height; row += args->numThreads) {
+        mandelbrotSerial(args->x0, args->y0, args->x1, args->y1,
+                         args->width, args->height,
+                         row, 1,
+                         args->maxIterations, args->output);
+    }
     double endTime = CycleTimer::currentSeconds();
-    printf("thread %d/%d rows [%d,%d): %.3f ms\n",
-           args->threadId, args->numThreads,
-           startRow, startRow + numRows, (endTime - startTime) * 1000);
+    printf("thread %d/%d: %.3f ms\n",
+           args->threadId, args->numThreads, (endTime - startTime) * 1000);
 }
 
 //
