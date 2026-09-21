@@ -52,9 +52,27 @@ x->0 and largest near x=3 (~20 iters). Times are min of 3 in-process runs;
   `vblendvps` that overwrites converged lanes with their old values — i.e.
   full-width instructions execute for converged lanes redundantly
   (divergence wastes lane output, not issue slots), and the only branch is
-  the single highly-predictable back-edge. ~10 vector uops spread over a
-  >= 15-cycle dependent chain -> ~20-25% FP-pipe occupancy for one thread,
-  consistent with the measured +~50% per-core throughput from SMT.
+  the single highly-predictable back-edge. Occupancy arithmetic: 4 chained
+  muls x 3 cyc = >=12 cycles; one full iteration ~17-20 cycles issuing ~5
+  muls -> mul-pipe occupancy 5/(2 pipes x 17 cyc) ~= **15%** (corrects the
+  earlier ~25-30% estimate). Theory bounds SMT gain in (1x, 2x) and, being
+  far from saturation, predicts close to 2x.
+
+  **Co-residency experiment (two processes, ispc-no-tasks phase):**
+
+  | Placement | ispc time each |
+  |:---------|:---------------|
+  | solo (1 process on cpu0)                      | 131-133 ms |
+  | same core (cpu0 + sibling cpu1, concurrently) | 133-135 ms |
+  | different cores (cpu0 + cpu2, concurrently)   | 133-134 ms |
+
+  Two latency-bound Newton loops sharing one core via SMT interfere ~zero:
+  per-core compute throughput ~2x, matching the 15%-occupancy prediction.
+  The full task pipeline measured only ~1.5-1.6x per core (17.7 -> ~10.8
+  ms), so the remaining ~20% is task-system overhead at the ~10 ms scale
+  (launch/schedule of 64 tasks, wake/sync of 15 workers), not FP-pipe
+  contention. (An earlier version of this note blamed a shared-structure
+  "co-residency tax" — wrong; corrected by this experiment.)
   Sources: agner.org instruction tables / uops.info (vmulps Zen 3: latency
   3, throughput 0.5 = 2 mul pipes); wikichip Zen 3 (FP pipes, 2-way SMT);
   Tullsen et al., ISCA 1995 (SMT fills issue slots); Hennessy & Patterson
