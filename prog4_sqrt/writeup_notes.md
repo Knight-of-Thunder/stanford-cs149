@@ -24,12 +24,28 @@ x->0 and largest near x=3 (~20 iters). Times are min of 3 in-process runs;
   across the 8 lanes of a gang (from ~0-1 iters near x=1 to ~20 near x=3),
   so gangs iterate until the slowest lane converges; finished lanes idle.
   Same divergence phenomenon as Program 3's mandel().
-- **Multi-core (tasks / no-tasks): ~131/11.2 = ~11.7x.** More than the 8
-  physical cores: the task system (64 tasks, span N/64) fills all 16 logical
-  CPUs, and divergent masked-off lanes leave execution bubbles that the
-  second SMT thread on each core can fill (same effect measured in
-  Program 3: 12.1x multicore factor there).
-- Total = SIMD x multicore ~ 5.0 x 11.7 ~ 58-65x, matching the reported
+- **Multi-core (tasks / no-tasks): ~131/10.8 = ~12x.** More than the 8
+  physical cores because the task system (64 tasks, span N/64) fills all 16
+  logical CPUs. Verified directly with taskset (interleaved A/B runs):
+
+  | CPUs available | Task-ISPC (ms) | Multicore factor |
+  |:--------------|---------------:|-----------------:|
+  | 16 logical (SMT on)  | 10.0-11.6 | ~12x  |
+  | 8 physical (0,2,4,...,14 — one per core, siblings idle) | 17.4-18.0 | ~7.3x |
+
+  **Why SMT helps — mechanism (important correction):** NOT branch
+  misprediction (the while-exit branch is highly predictable: ~1 mispredict
+  per gang amortized over ~20 iterations, negligible), and NOT masked-off
+  lanes leaving bubbles (AVX2 vector instructions always issue full-width;
+  converged lanes are computed redundantly / blended — divergence wastes
+  vector-lane *output*, not issue slots). The real source is the
+  **loop-carried floating-point dependency chain**: guess_{n+1} = f(guess_n)
+  stalls ~15-20 cycles per iteration on FP latency with only ~5 FP ops to
+  offer, so one thread sustains only ~25-30% of the core's FP issue slots.
+  The sibling SMT thread's independent Newton chain fills those slots.
+  Cross-evidence: Program 1's *scalar* C++ mandelbrot (no SIMD, no masks)
+  showed the same +25-27% from 16 vs 8 threads.
+- Total = SIMD x multicore ~ 5.0 x 12 ~ 58-65x, matching the reported
   task-ISPC speedups.
 
 ---

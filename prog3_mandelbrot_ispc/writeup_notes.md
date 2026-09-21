@@ -115,10 +115,17 @@ Both views comfortably exceed the assignment's 32x target (which assumed the
 4-core myth machines).
 
 Note: total/ISPC = 72.2/5.98 = 12.1x on VIEW 1 — MORE than the 8 physical
-cores. This is SMT at work: the task system fills all 16 logical CPUs, and
-because each gang's masked-off (diverged) lanes leave execution bubbles, the
-second SMT thread on a core can use them. Consistent with Program 1, where 16
-threads beat 8 threads by ~25% on the same compute-bound kernel.
+cores. This is SMT at work: the task system fills all 16 logical CPUs. The
+mechanism is NOT masked-lane bubbles (AVX2 instructions issue full-width;
+diverged lanes are computed redundantly — divergence wastes lane output, not
+issue slots) and not branch misprediction (loop exits are highly
+predictable). It is the loop-carried FP dependency chain (z = f(z) per
+iteration, ~15-20 cycles of latency with few independent ops) leaving most
+FP issue slots unused by a single thread; the sibling SMT thread's
+independent chain fills them. Verified in Program 4 with taskset: multicore
+factor ~12x with 16 logical CPUs vs ~7.3x pinned to one thread per physical
+core. Consistent with Program 1, where scalar 16 threads beat 8 threads by
+~25% on the same compute-bound kernel.
 
 ---
 
