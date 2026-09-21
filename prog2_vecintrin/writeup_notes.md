@@ -32,3 +32,35 @@ Correctness (VECTOR_WIDTH = 4):
 write reported by verifyResult).
 
 ---
+
+## Task 2 — Utilization vs VECTOR_WIDTH (./myexp -s 10000)
+
+Changed `#define VECTOR_WIDTH` in CS149intrin.h, rebuilt, and re-ran:
+
+| VECTOR_WIDTH | Total Vec Instr | Vector Utilization |
+|-------------:|----------------:|-------------------:|
+| 2            | 167515          | 87.9%              |
+| 4            | 97071           | 82.7%              |
+| 8            | 52877           | 80.0%              |
+| 16           | 27592           | 78.8%              |
+
+**Utilization DECREASES as VECTOR_WIDTH increases** (and the decrease shrinks,
+approaching an asymptote).
+
+Why: all the wasted lane-slots come from the multiply loop, which is
+data-divergent. Exponents are uniform in [0, 9]. A batch's loop runs
+max(exponents in that batch) iterations, and on iteration k only lanes with
+exponent >= k are still active; lanes that already finished sit idle (masked)
+for the rest of the loop. As VECTOR_WIDTH grows, (1) the maximum exponent
+within a batch tends to be larger (max of more samples), so the loop runs
+longer, and (2) more lanes are idle during those extra "tail" iterations.
+Both raise the fraction of wasted lane-slots, so average utilization falls.
+The non-divergent instructions (load/store/vset/clamp) are always fully
+utilized; only the divergent loop loses lanes.
+
+(Total Vector Instructions roughly halves each time the width doubles, since
+each instruction now does twice the work — that's the SIMD speedup, separate
+from utilization.)
+
+---
+
