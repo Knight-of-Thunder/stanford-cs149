@@ -32,9 +32,12 @@ int main() {
         // TODO: CS149 students.  Attempt to change the values in the
         // array here to meet the instructions in the handout: we want
         // to you generate best and worse-case speedups
-        
-        // starter code populates array with random input values
-        values[i] = .001f + 2.998f * static_cast<float>(rand()) / RAND_MAX;
+
+        // Task 2 (max speedup): uniform value with the worst convergence.
+        // Every element needs the maximum number of Newton iterations
+        // (~20 at x->3), so the serial version is as slow as possible, and
+        // all lanes of a gang converge in lockstep -> zero SIMD divergence.
+        values[i] = 2.999f;
     }
 
     // generate a gold version to check results

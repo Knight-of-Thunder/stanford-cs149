@@ -102,3 +102,28 @@ x->0 and largest near x=3 (~20 iters). Times are min of 3 in-process runs;
   task-ISPC speedups.
 
 ---
+
+## Task 2 — Input that maximizes speedup: all values = 2.999f
+
+Every element set to 2.999f (worst convergence in the valid range, ~20
+Newton iterations): the serial denominator is maximized AND every gang lane
+converges in lockstep -> zero SIMD divergence.
+
+| Metric | Baseline (random) | All 2.999f |
+|:-------|------------------:|-----------:|
+| Serial (ms)             | ~655    | ~1363 (2.08x slower) |
+| SIMD speedup (no tasks) | 5.0x    | **6.6-6.7x**  |
+| Multicore factor (tasks/no-tasks) | ~11.7-12x | ~11.5x |
+| Total speedup           | 58-65x  | **74.5-78.9x** |
+
+Answers to the handout's questions:
+- **Does it improve SIMD speedup?** Yes: 5.0x -> 6.6-6.7x (~82% of the
+  ideal 8x). With zero divergence all lanes stay active; the remaining gap
+  is per-iteration overhead (compare/mask/blend/test instructions issue
+  every iteration even when all lanes are active) and gang loop control.
+- **Does it improve multi-core speedup (the benefit of adding tasks)?**
+  No: ~11.5x vs ~11.7-12x baseline, essentially unchanged. Divergence is an
+  intra-core lane-level property; how much tasks help depends on core
+  count / SMT / DVFS, not on the input's per-element iteration spread.
+
+---
