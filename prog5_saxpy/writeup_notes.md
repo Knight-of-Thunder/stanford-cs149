@@ -71,3 +71,37 @@ traffic. (Also: measuring tiny workloads with per-measurement thread
 spawn/join pollutes results with ~0.1 ms fixed overhead — amortize first.)
 
 ---
+
+## Extra credit 1 — Why TOTAL_BYTES = 4·N·sizeof(float) is correct
+
+Naively the kernel touches 3 words per element — read X[i], read Y[i],
+write result[i] — which would give 3·N·4 bytes. The program counts a 4th
+word, and it is correct. The reason is the cache's **write-allocate**
+policy (read-for-ownership, RFO):
+
+1. Caches operate on **64-byte lines**, not individual words, and the line
+   is the unit of coherence: a store may modify only part of a line, so
+   the cache must hold the *entire* line to write it back consistently.
+2. Stores in compiled code are ordinary **write-back cached stores**. On a
+   store miss (the line is not in cache), the memory system first **reads
+   the full 64B line from DRAM into the cache**, merges the 4B store into
+   it, and the dirty line is **written back to DRAM on eviction**.
+3. Per element (sequential streaming, 16 floats per line, so each line is
+   fetched once and evicted once — 64B/16 = 4B amortized per element):
+
+   | Traffic per element | Bytes |
+   |:--------------------|------:|
+   | read X[i] (streamed, no reuse)      | 4 |
+   | read Y[i] (streamed, no reuse)      | 4 |
+   | write result[i]: RFO read of line   | 4 |
+   | write result[i]: write-back of line | 4 |
+   | **total**                           | **16 = 4 words** |
+
+So the true DRAM traffic is 4·N·4B, exactly TOTAL_BYTES. (Our STREAM-triad
+measurements counted 16B/element for the same reason.) The only way to
+avoid the RFO read is to store in a way that does not require line
+ownership — e.g. non-temporal streaming stores — which is precisely the
+extra-credit-2 idea: it cuts traffic to 12B/elem, and at a fixed ~42 GB/s
+byte limit that buys at most 16/12 ≈ 1.33x.
+
+---
