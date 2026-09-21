@@ -121,3 +121,70 @@ second SMT thread on a core can use them. Consistent with Program 1, where 16
 threads beat 8 threads by ~25% on the same compute-bound kernel.
 
 ---
+
+## Extra credit — Thread abstraction vs ISPC task abstraction
+
+### The two abstractions
+
+- `std::thread` (Program 1): each thread is an **OS execution context** — its
+  own stack (Linux default 8 MB), register state, kernel scheduling entity.
+  Creating one is a heavyweight `clone()` syscall; `join()` blocks the caller
+  until that *specific* thread exits.
+- ISPC task (Program 3): a task is just a **logical unit of work** (a function
+  pointer + small data descriptor) pushed onto a queue. A small persistent
+  pool of worker threads — created once, roughly one per logical CPU — pulls
+  tasks and runs them to completion. `launch` enqueues; the implicit `sync`
+  at the end of the export function is a *collective* barrier over the whole
+  launched set, not a per-task wait.
+
+### Thought experiment: 10,000 threads vs 10,000 tasks
+
+**10,000 threads** — the machine only has 8 cores, so at most ~16 run
+simultaneously; the rest exist as pure overhead:
+- Memory: 10,000 x 8 MB stacks = ~80 GB of address space (virtual, but with
+  page-table and physical cost for touched pages).
+- Creation cost: `clone()` + stack setup is tens of microseconds each ->
+  seconds spent just creating, before any work.
+- Scheduler collapse: 10,000 runnable entities on 8 cores means constant
+  context switching (~µs each), cache/TLB thrashing, and run-queue lock
+  contention — the kernel spends more time juggling threads than executing
+  user code.
+
+**10,000 ISPC tasks** — nothing dramatic happens:
+- The 16 (or so) pool workers simply dequeue and execute them one after
+  another. A task descriptor is tens of bytes -> a few MB total.
+- No new OS contexts, no context switches beyond normal pool operation;
+  "scheduling" is a queue pop (~sub-µs).
+- Throughput is bounded by the cores, and per-task overhead is a small
+  constant — exactly the regime where our sweep showed 400 tasks still
+  performing at ~51x. The same count as threads would fall over.
+
+### Why the difference matters (the subtle part)
+
+The task abstraction **decouples logical parallelism from hardware
+parallelism**: the program may express any number of independent pieces
+(10,000), while the runtime multiplexes them onto the fixed hardware (8
+cores) with dynamic load balancing — a worker that finishes early grabs the
+next task (exactly how 50 tasks smoothed the heavy-center imbalance in
+Part 2). With raw threads, mapping work to hardware is the programmer's job
+(Program 1: we manually interleaved rows), and oversubscribing threads hurts
+rather than helps.
+
+Other implications:
+- **Join vs sync**: per-thread joins make nested/recursive parallelism
+  awkward (thread counts explode); collective task sync composes naturally
+  (tasks may launch subtasks).
+- **Preemption vs run-to-completion**: OS threads are time-slice preempted
+  and can block on I/O for long periods safely. ISPC tasks assume short,
+  compute-bound, non-blocking work — a blocking task would monopolize a
+  worker, since the pool has no spare threads. So tasks trade generality
+  for cheapness.
+- **Scheduling granularity**: ISPC tasks additionally each carry a SIMD gang
+  (programCount lanes), so the same runtime manages both levels of the
+  machine's parallelism (cores + vector units); threads address only cores.
+
+One line: a thread is an *execution resource* you allocate; a task is a
+*piece of work* you describe. 10,000 of the former exhausts the OS; 10,000
+of the latter is just a long queue.
+
+---
