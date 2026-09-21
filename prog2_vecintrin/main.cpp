@@ -310,15 +310,30 @@ float arraySumSerial(float* values, int N) {
 // You can assume N is a multiple of VECTOR_WIDTH
 // You can assume VECTOR_WIDTH is a power of 2
 float arraySumVector(float* values, int N) {
-  
+
   //
   // CS149 STUDENTS TODO: Implement your vectorized version of arraySumSerial here
   //
-  
-  for (int i=0; i<N; i+=VECTOR_WIDTH) {
 
+  __cs149_mask maskAll = _cs149_init_ones();
+  __cs149_vec_float acc = _cs149_vset_float(0.f);   // VECTOR_WIDTH partial sums
+  __cs149_vec_float v;
+
+  // Step 1 -- accumulate the N elements into VECTOR_WIDTH lanes. O(N / VECTOR_WIDTH).
+  // Lane j ends up holding the sum of every element whose index == j (mod width).
+  for (int i = 0; i < N; i += VECTOR_WIDTH) {
+    _cs149_vload_float(v, values + i, maskAll);
+    _cs149_vadd_float(acc, acc, v, maskAll);
   }
 
-  return 0.0;
+  // Step 2 -- reduce the VECTOR_WIDTH partial sums to one, in log2(VECTOR_WIDTH)
+  // rounds of hadd + interleave. Each round halves the number of distinct
+  // partial sums; after the last round every lane holds the grand total.
+  for (int w = VECTOR_WIDTH; w > 1; w /= 2) {
+    _cs149_hadd_float(acc, acc);
+    _cs149_interleave_float(acc, acc);
+  }
+
+  return acc.value[0];
 }
 

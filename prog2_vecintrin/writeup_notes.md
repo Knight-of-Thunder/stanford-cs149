@@ -64,3 +64,18 @@ from utilization.)
 
 ---
 
+## Task 3 (extra credit) — arraySumVector
+
+Runtime O(N / VECTOR_WIDTH + log2(VECTOR_WIDTH)):
+1. Accumulate all N elements into a width-wide accumulator with N/width vector
+   adds (lane j holds the sum of elements at indices == j mod width).
+2. Reduce the width partial sums to one scalar in log2(width) rounds of
+   `hadd` (sum adjacent pairs, duplicated) + `interleave` (even indices to the
+   front half, odd to the back). After the last round every lane holds the
+   grand total; return lane 0.
+
+Verified Passed for VECTOR_WIDTH = 2, 4, 8, 16 (./myexp -s 10000, N a multiple
+of width as the harness requires). CS149intrin.h left at width 4.
+
+---
+
