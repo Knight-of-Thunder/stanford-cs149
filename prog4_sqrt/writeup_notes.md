@@ -68,11 +68,32 @@ x->0 and largest near x=3 (~20 iters). Times are min of 3 in-process runs;
 
   Two latency-bound Newton loops sharing one core via SMT interfere ~zero:
   per-core compute throughput ~2x, matching the 15%-occupancy prediction.
-  The full task pipeline measured only ~1.5-1.6x per core (17.7 -> ~10.8
-  ms), so the remaining ~20% is task-system overhead at the ~10 ms scale
-  (launch/schedule of 64 tasks, wake/sync of 15 workers), not FP-pipe
-  contention. (An earlier version of this note blamed a shared-structure
-  "co-residency tax" — wrong; corrected by this experiment.)
+
+  **What actually caps the multicore factor: DVFS (power-limited
+  frequency), not scheduling.** Two further experiments:
+  1. N-scaling (20M -> 80M): per-core factors unchanged (1.51 -> 1.47 at 16
+     logical; 0.92 -> 0.89 at 8 physical). A fixed task-launch/wake cost
+     would amortize with N; it didn't -> the deficit is per-byte/per-cycle,
+     not fixed overhead.
+  2. Frequency test (cpu0 single-thread ispc, cpu0's SMT sibling idle in
+     all cases, so no direct resource sharing):
+
+     | Chip state | cpu0 ispc time | relative speed |
+     |:-----------|:---------------|:---------------|
+     | idle                          | 130.4 ms | 1.00 (max boost) |
+     | other 7 physical cores loaded | 152.0 ms | 0.86 |
+     | other 14 logical CPUs loaded  | 182.7 ms | 0.71 |
+
+     The 45W laptop chip throttles as the power budget is spread across
+     cores. Reconciliation: 16-logical per-core factor = 2 x 0.714 = 1.43
+     (measured 1.47); 8-physical = 0.857 (measured 0.90). The speedup
+     denominator (ispc-no-tasks) is measured at single-core boost, so
+     multicore speedups on this chip are structurally capped by DVFS.
+     (Also explains Program 3's 12.1x multicore factor on the same chip.)
+  The tasksys busy-wait tail (source FIXME: "extra wasteful in a world
+  with hyper-threading") and per-launch sem_posts remain minor µs-scale
+  effects. Earlier attribution of the gap to "task-system overhead" was
+  wrong — corrected by the N-scaling experiment.
   Sources: agner.org instruction tables / uops.info (vmulps Zen 3: latency
   3, throughput 0.5 = 2 mul pipes); wikichip Zen 3 (FP pipes, 2-way SMT);
   Tullsen et al., ISCA 1995 (SMT fills issue slots); Hennessy & Patterson
