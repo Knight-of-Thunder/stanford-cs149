@@ -45,6 +45,20 @@ x->0 and largest near x=3 (~20 iters). Times are min of 3 in-process runs;
   The sibling SMT thread's independent Newton chain fills those slots.
   Cross-evidence: Program 1's *scalar* C++ mandelbrot (no SIMD, no masks)
   showed the same +25-27% from 16 vs 8 threads.
+
+  Direct evidence from our own binary (`objdump -d objs/sqrt_ispc.o`): the
+  Newton loop body is four back-to-back `vmulps` all serialized on the same
+  `%ymm13` (>= 3-cycle latency each on Zen 3 per Agner Fog's tables), then a
+  `vblendvps` that overwrites converged lanes with their old values — i.e.
+  full-width instructions execute for converged lanes redundantly
+  (divergence wastes lane output, not issue slots), and the only branch is
+  the single highly-predictable back-edge. ~10 vector uops spread over a
+  >= 15-cycle dependent chain -> ~20-25% FP-pipe occupancy for one thread,
+  consistent with the measured +~50% per-core throughput from SMT.
+  Sources: agner.org instruction tables / uops.info (vmulps Zen 3: latency
+  3, throughput 0.5 = 2 mul pipes); wikichip Zen 3 (FP pipes, 2-way SMT);
+  Tullsen et al., ISCA 1995 (SMT fills issue slots); Hennessy & Patterson
+  Ch. 3 (OoO / reservation stations).
 - Total = SIMD x multicore ~ 5.0 x 12 ~ 58-65x, matching the reported
   task-ISPC speedups.
 
