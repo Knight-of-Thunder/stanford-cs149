@@ -57,4 +57,17 @@ real improvements come from *moving fewer bytes* (e.g. non-temporal stores
 to skip the write-allocate read: 16→12 B/elem, theoretical max ~1.33x) —
 extra-credit territory, still nowhere near linear.
 
+### Metric caveat: the printed GB/s is an *effective* rate, not measured traffic
+
+Both GB/s and GFLOPS are (algorithmic-model total) / (measured time):
+traffic is *assumed* to be 16 B/element (2 reads + write-allocate), FLOPs
+*assumed* 2/element. No hardware counters are involved. Verified with an
+amortized triad (threads spawned once, inner reps): with N=1M (12 MB, fits
+the 16 MB L3) the same formula yields **97 GB/s**, and with N=100k (L1/L2
+hot) **144 GB/s** — both above the 76.8 GB/s DRAM physical limit, i.e.
+fictitious as DRAM bandwidth because the cache supplied the data. Saxpy's
+80 MB arrays make the model valid, so its 26-40 GB/s is genuine DRAM
+traffic. (Also: measuring tiny workloads with per-measurement thread
+spawn/join pollutes results with ~0.1 ms fixed overhead — amortize first.)
+
 ---
