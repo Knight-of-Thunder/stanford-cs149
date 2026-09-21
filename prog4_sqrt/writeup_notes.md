@@ -127,3 +127,39 @@ Answers to the handout's questions:
   count / SMT / DVFS, not on the input's per-element iteration spread.
 
 ---
+
+## Task 3 — Input that minimizes ISPC (no-tasks) speedup
+
+Input: period-8 pattern — `(i % 8 == 0) ? 2.999f : 1.0f`, i.e. 1 slow
+element (~20 Newton iterations) + 7 instant-converging elements per gang.
+Serial skips through 7/8 of the array almost free, but every 8-lane gang is
+held hostage by its single slow lane and iterates ~20 times with 7/8 of the
+lanes masked off. Pattern period 8 => exactly one slow element per gang no
+matter how foreach maps iterations to lanes.
+
+| Metric | Value |
+|:-------|------:|
+| Serial (ms)   | ~186   |
+| ISPC (ms)     | ~202 (== all-2.999f's 205 ms, as predicted) |
+| **Speedup**   | **0.91-0.93x — vector is SLOWER than serial** |
+
+The reason for the loss of efficiency: the gang's while loop runs
+max(iterations in gang) times; masked-off lanes idle but still cost
+full-width compare/blend/test instructions each iteration, so the vector
+unit does ~8x the useful work's instruction issue for 1/8 the useful
+lanes. SIMD is worse than useless under extreme divergence.
+
+### Divergence trend across all three constructed inputs
+
+| Input pattern | Lane utilization (theory) | SIMD speedup (measured) |
+|:--------------|--------------------------:|------------------------:|
+| all 2.999f (uniform, 20 iters)   | 100%  | 6.6-6.7x |
+| alternating 4 slow + 4 fast      | 52.5% | 3.33x    |
+| 1 slow + 7 fast (period 8)       | ~17%  | **0.92x**|
+
+Measured speedup ~= 8 x utilization x ~0.8 overhead factor across all
+three points — the divergence model quantitatively matches. (With tasks
+the worst case recovers to ~11x total, since multicore scaling is
+unaffected by intra-gang divergence.)
+
+---

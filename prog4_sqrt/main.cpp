@@ -33,11 +33,15 @@ int main() {
         // array here to meet the instructions in the handout: we want
         // to you generate best and worse-case speedups
 
-        // Task 2 (max speedup): uniform value with the worst convergence.
-        // Every element needs the maximum number of Newton iterations
-        // (~20 at x->3), so the serial version is as slow as possible, and
-        // all lanes of a gang converge in lockstep -> zero SIMD divergence.
-        values[i] = 2.999f;
+        // Task 3 (min SIMD speedup, no tasks): 7 fast + 1 slow per 8.
+        // x=1.0f converges in 0 iterations (initial guess is exact), so the
+        // serial version skips through 7/8 of elements almost free, while
+        // each 8-lane gang is held hostage by its single 2.999f lane and
+        // must iterate ~20 times with 7/8 of the lanes masked off
+        // (~17% lane utilization). Pattern period 8 guarantees exactly one
+        // slow element per gang regardless of how foreach maps iterations
+        // to lanes.
+        values[i] = (i % 8 == 0) ? 2.999f : 1.0f;
     }
 
     // generate a gold version to check results
