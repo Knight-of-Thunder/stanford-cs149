@@ -65,28 +65,42 @@ double dist(double *x, double *y, int nDim) {
 /**
  * Assigns each data point to its "closest" cluster centroid.
  */
-void computeAssignments(WorkerArgs *const args) {
-  double *minDist = new double[args->M];
-  
-  // Initialize arrays
-  for (int m =0; m < args->M; m++) {
-    minDist[m] = 1e30;
-    args->clusterAssignments[m] = -1;
-  }
 
-  // Assign datapoints to closest centroids
-  for (int k = args->start; k < args->end; k++) {
-    for (int m = 0; m < args->M; m++) {
-      double d = dist(&args->data[m * args->N],
-                      &args->clusterCentroids[k * args->N], args->N);
-      if (d < minDist[m]) {
-        minDist[m] = d;
-        args->clusterAssignments[m] = k;
+// Worker: assign points in [mStart, mEnd) to their nearest centroid.
+// Each point m is written by exactly one thread, so no synchronization is
+// needed. Loop is point-major (m outer, k inner) so the split is over M.
+static void assignPointsRange(WorkerArgs *const args, int mStart, int mEnd) {
+  int K = args->K, N = args->N;
+  for (int m = mStart; m < mEnd; m++) {
+    double best = 1e30;
+    int bestK = -1;
+    for (int k = 0; k < K; k++) {
+      double d = dist(&args->data[m * N], &args->clusterCentroids[k * N], N);
+      if (d < best) {
+        best = d;
+        bestK = k;
       }
     }
+    args->clusterAssignments[m] = bestK;
   }
+}
 
-  delete[] minDist;
+void computeAssignments(WorkerArgs *const args) {
+  const int numThreads = 8;
+  int M = args->M;
+
+  std::thread workers[numThreads];
+  int chunk = (M + numThreads - 1) / numThreads;  // ceil division
+  for (int t = 1; t < numThreads; t++) {
+    int s = t * chunk;
+    int e = std::min(M, s + chunk);
+    workers[t] = std::thread(assignPointsRange, args, s, e);
+  }
+  // Main thread handles chunk 0.
+  assignPointsRange(args, 0, std::min(M, chunk));
+
+  for (int t = 1; t < numThreads; t++)
+    workers[t].join();
 }
 
 /**

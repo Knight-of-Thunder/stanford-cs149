@@ -51,3 +51,37 @@ reference. Next target remains computeAssignments (still ~68%).
 
 ---
 
+## Step 3 — Parallelize computeAssignments with std::thread (8 threads)
+
+The starter loops centroid-major (k outer, m inner) sharing a per-point
+minDist[] array. To parallelize safely I restructured it point-major (m
+outer, k inner) and split the M points across 8 threads: each point m is
+written by exactly one thread, so there is NO synchronization and no shared
+minDist[] (it becomes a per-point local). Main thread does chunk 0; 7
+std::threads do the rest; join at the end. Only computeAssignments is
+parallelized (satisfies the "parallelize only one function" rule).
+
+| Stage | Total (ms) | computeAssignments (ms) |
+|:------|-----------:|------------------------:|
+| Step 1 baseline        | ~8000 | ~5700 |
+| Step 2 (pow->mult)     | ~6690 | ~4550 |
+| **Step 3 (8 threads)** | **~2770** | **~580** |
+
+- computeAssignments: 4550 -> 580 ms = **7.8x** (near-linear on 8 cores;
+  it's compute-bound with disjoint writes, so it scales well).
+- **Total speedup vs original starter: 8000/2770 = 2.89x** — exceeds the
+  2.1x target.
+
+Correctness verified: end.log centroids identical to the starter reference,
+and plot.py produces the expected 3-cluster figure (red-star centroids at
+cluster centers, matching the handout).
+
+Now the bottleneck has shifted: computeCost (~1280 ms, ~46%) and
+computeCentroids (~890 ms) dominate the remaining 2.77 s. Further gains
+would need parallelizing those too, but the rules allow only one function —
+so 2.89x is the final result. (The pow->mult cut in Step 2 legitimately
+helped all three; only the threading is restricted to one function.)
+
+---
+
+
