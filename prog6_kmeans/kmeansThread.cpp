@@ -56,7 +56,8 @@ static bool stoppingConditionMet(double *prevCost, double *currCost,
 double dist(double *x, double *y, int nDim) {
   double accum = 0.0;
   for (int i = 0; i < nDim; i++) {
-    accum += pow((x[i] - y[i]), 2);
+    double diff = x[i] - y[i];
+    accum += diff * diff;   // was pow(diff, 2): libm pow is far slower
   }
   return sqrt(accum);
 }

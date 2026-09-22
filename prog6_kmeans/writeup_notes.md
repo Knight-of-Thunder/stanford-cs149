@@ -32,3 +32,22 @@ plain multiply, affecting all three functions.
 in-loop work is what matters, fixed startup is negligible.)
 
 ---
+
+## Step 2 — First cut: replace pow(diff, 2) with diff*diff in dist()
+
+Rationale: dist() is called by all three functions; libm pow() is much
+slower than a multiply. Math-identical, so functionality is unchanged.
+
+| | Total (ms) | computeAssignments (ms) |
+|:-|----------:|------------------------:|
+| Step 1 baseline | ~8000 | ~5700 |
+| Step 2 (mult)   | ~6690 | ~4550 |
+| **Speedup**     | **1.19x** | 1.29x |
+
+Smaller than expected — at -O3 the compiler already strength-reduces
+pow(x,2) somewhat; the bulk of the cost is the 3M-calls-per-iter loop
+itself, not pow. Correctness: end.log centroids identical to the starter
+reference. Next target remains computeAssignments (still ~68%).
+
+---
+
