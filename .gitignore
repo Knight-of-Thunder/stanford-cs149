@@ -23,3 +23,6 @@ prog6_kmeans/data.dat
 
 # Python virtual environment
 .venv/
+
+# Writeup intermediate (regenerated from writeup.md)
+writeup.html
